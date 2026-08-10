@@ -1,0 +1,26 @@
+{
+  "name": "split-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute split-db --local --file=./migrations/001_initial.sql",
+    "db:remote": "wrangler d1 execute split-db --remote --file=./migrations/001_initial.sql",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 execute split-db --local --file=./migrations/001_initial.sql",
+    "db:migrate:remote": "wrangler d1 execute split-db --remote --file=./migrations/001_initial.sql"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.1.11",
+    "hono": "^4.0.0",
+    "jose": "^5.2.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240101.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^3.22.0"
+  }
+}
