@@ -1,34 +1,172 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { Friend } from "@/lib/api";
-import { createExpense, ApiError, searchUsers } from "@/lib/api";
+import { useState, useEffect, useRef } from "react";
+import type { Friend, User } from "@/lib/api";
+import { createExpense, ApiError, getTagSuggestions } from "@/lib/api";
+import TagInput from "./TagInput";
+import { Modal } from "./Modal";
+import { SplitsEditor, type SplitDraft } from "./SplitsEditor";
 
 interface Props {
   friends: Friend[];
+  currentUser: User;
   onCreated: () => void;
+  /** When set, the expense is created inside this group. */
+  groupId?: string;
+  /**
+   * When provided, the parent controls visibility: renders the modal when
+   * `true` and nothing when `false` (parent supplies its own trigger).
+   */
+  open?: boolean;
+  onClose?: () => void;
 }
 
-export function CreateExpenseForm({ friends, onCreated }: Props) {
+export function CreateExpenseForm({
+  friends,
+  currentUser,
+  onCreated,
+  groupId,
+  open,
+  onClose,
+}: Props) {
+  const isControlled = open !== undefined;
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
-  const [splits, setSplits] = useState<
-    { userId: string; userName: string; amountOwed: string }[]
-  >([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [splits, setSplits] = useState<SplitDraft[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal");
+  const autoFillDoneRef = useRef(false);
 
-  // Reset splits when friends change
+  const isOpen = isControlled ? open : expanded;
+
+  const close = () => {
+    if (isControlled) onClose?.();
+    else setExpanded(false);
+  };
+
+  // Reset auto-fill flag when amount or split selection changes
+  const resetAutoFill = () => {
+    autoFillDoneRef.current = false;
+  };
+
+  // Fetch tag suggestions from user + friends on mount
   useEffect(() => {
-    setSplits(
-      friends.map((f) => ({ userId: f.id, userName: f.name, amountOwed: "" })),
+    let cancelled = false;
+    setTagsLoading(true);
+    getTagSuggestions()
+      .then((data) => {
+        if (!cancelled) {
+          setTagSuggestions(data.tags.map((t) => t.name));
+        }
+      })
+      .catch(() => {
+        // Silently ignore — suggestions are non-critical
+      })
+      .finally(() => {
+        if (!cancelled) setTagsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Pre-populate splits: only current user by default; in a group,
+  // include all group members (the user can still deselect any of them).
+  useEffect(() => {
+    const initial: SplitDraft[] = [
+      { userId: currentUser.id, userName: currentUser.name, amountOwed: "" },
+    ];
+    if (groupId) {
+      initial.push(
+        ...friends.map((f) => ({
+          userId: f.id,
+          userName: f.name,
+          amountOwed: "",
+        })),
+      );
+    }
+    setSplits(initial);
+    resetAutoFill();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, groupId]);
+
+  // Auto-calculation: equally mode — divide total among all selected
+  useEffect(() => {
+    if (splitMode !== "equal") return;
+    const total = parseFloat(amount);
+    if (!total || total <= 0 || splits.length === 0) return;
+
+    // Truncate to cents, give remainder to the last person to avoid rounding gaps
+    const truncatedCents = Math.floor((total / splits.length) * 100) / 100;
+    const lastAmount =
+      Math.round((total - truncatedCents * (splits.length - 1)) * 100) / 100;
+
+    setSplits((prev) =>
+      prev.map((s, i) => ({
+        ...s,
+        amountOwed:
+          i === splits.length - 1
+            ? lastAmount.toFixed(2)
+            : truncatedCents.toFixed(2),
+      })),
     );
-  }, [friends]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, splitMode, splits.length]);
+
+  // Auto-calculation: custom mode — smart auto-fill
+  useEffect(() => {
+    if (splitMode !== "custom") return;
+    const total = parseFloat(amount);
+    if (!total || total <= 0) return;
+
+    const filled = splits.filter(
+      (s) => s.amountOwed !== "" && parseFloat(s.amountOwed) >= 0,
+    );
+    const empty = splits.filter(
+      (s) => s.amountOwed === "" || parseFloat(s.amountOwed) < 0,
+    );
+
+    if (splits.length === 2) {
+      // 2 people: auto-calculate remaining on every change
+      if (filled.length === 1 && empty.length === 1) {
+        const filledSum = filled.reduce(
+          (sum, s) => sum + parseFloat(s.amountOwed),
+          0,
+        );
+        const remaining = (total - filledSum).toFixed(2);
+        setSplits((prev) =>
+          prev.map((s) =>
+            s.userId === empty[0].userId ? { ...s, amountOwed: remaining } : s,
+          ),
+        );
+      }
+    } else if (splits.length >= 3 && !autoFillDoneRef.current) {
+      // 3+ people: auto-fill last empty only once
+      if (empty.length === 1 && filled.length === splits.length - 1) {
+        const filledSum = filled.reduce(
+          (sum, s) => sum + parseFloat(s.amountOwed),
+          0,
+        );
+        const remaining = (total - filledSum).toFixed(2);
+        setSplits((prev) =>
+          prev.map((s) =>
+            s.userId === empty[0].userId ? { ...s, amountOwed: remaining } : s,
+          ),
+        );
+        autoFillDoneRef.current = true;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, splitMode, splits]);
 
   const toggleFriend = (friend: Friend) => {
+    resetAutoFill();
     const exists = splits.find((s) => s.userId === friend.id);
     if (exists) {
       setSplits(splits.filter((s) => s.userId !== friend.id));
@@ -41,6 +179,9 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
   };
 
   const updateSplitAmount = (userId: string, value: string) => {
+    if (splitMode === "custom") {
+      resetAutoFill();
+    }
     setSplits(
       splits.map((s) =>
         s.userId === userId ? { ...s, amountOwed: value } : s,
@@ -48,11 +189,9 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
     );
   };
 
-  const splitEqually = () => {
-    const numPeople = splits.length;
-    if (numPeople === 0 || !amount) return;
-    const each = (parseFloat(amount) / numPeople).toFixed(2);
-    setSplits(splits.map((s) => ({ ...s, amountOwed: each })));
+  const handleModeToggle = (mode: "equal" | "custom") => {
+    setSplitMode(mode);
+    resetAutoFill();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,26 +230,38 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
         amount: totalAmount,
         name,
         description: description || undefined,
-        tags: tags
-          ? tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : undefined,
+        tags: tags.length > 0 ? tags : undefined,
         splits: splitData,
+        groupId,
       });
       setName("");
       setAmount("");
       setDescription("");
-      setTags("");
+      setTags([]);
       setSplits(
-        friends.map((f) => ({
-          userId: f.id,
-          userName: f.name,
-          amountOwed: "",
-        })),
+        groupId
+          ? [
+              {
+                userId: currentUser.id,
+                userName: currentUser.name,
+                amountOwed: "",
+              },
+              ...friends.map((f) => ({
+                userId: f.id,
+                userName: f.name,
+                amountOwed: "",
+              })),
+            ]
+          : [
+              {
+                userId: currentUser.id,
+                userName: currentUser.name,
+                amountOwed: "",
+              },
+            ],
       );
-      setExpanded(false);
+      setSplitMode("equal");
+      close();
       onCreated();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -123,35 +274,49 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
     }
   };
 
-  if (!expanded) {
+  if (!isOpen) {
+    if (isControlled) return null;
     return (
-      <button onClick={() => setExpanded(true)} className="btn-primary w-full">
-        + New Expense
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-tactical-primary w-full"
+      >
+        [ + NEW EXPENSE ]
       </button>
     );
   }
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-gray-700">New Expense</h3>
-        <button
-          onClick={() => setExpanded(false)}
-          className="text-gray-400 hover:text-gray-600 text-sm"
-        >
-          Cancel
-        </button>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      title="[ New Expense ]"
+      onClose={close}
+      footer={
+        <div className="space-y-3">
+          {error && <div className="alert-tactical-error">{error}</div>}
+          <button
+            type="submit"
+            form="create-expense-form"
+            className="btn-tactical-primary w-full"
+            disabled={loading}
+          >
+            {loading ? "[ PROCESSING... ]" : "[ CREATE EXPENSE ]"}
+          </button>
+        </div>
+      }
+    >
+      <form
+        id="create-expense-form"
+        onSubmit={handleSubmit}
+        className="space-y-4"
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
               Name
             </label>
             <input
               type="text"
-              className="input"
+              className="input-tactical"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Dinner, Rent, etc."
@@ -159,14 +324,14 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount ($)
+            <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
+              Amount (₹)
             </label>
             <input
               type="number"
               step="0.01"
               min="0.01"
-              className="input"
+              className="input-tactical"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -176,12 +341,12 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
             Description (optional)
           </label>
           <input
             type="text"
-            className="input"
+            className="input-tactical"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional notes..."
@@ -189,89 +354,30 @@ export function CreateExpenseForm({ friends, onCreated }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Tags (comma-separated)
+          <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
+            Tags
           </label>
-          <input
-            type="text"
-            className="input"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="groceries, utilities"
+          <TagInput
+            selectedTags={tags}
+            onChange={setTags}
+            suggestions={tagSuggestions}
+            loading={tagsLoading}
           />
         </div>
 
         {/* Splits */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-gray-700">Splits</label>
-            <button
-              type="button"
-              onClick={splitEqually}
-              className="text-xs text-primary-600 hover:underline"
-            >
-              Split Equally
-            </button>
-          </div>
-
-          {friends.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              Add friends first to split expenses.
-            </p>
-          ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {friends.map((friend) => {
-                const split = splits.find((s) => s.userId === friend.id);
-                const isSelected = !!split;
-                return (
-                  <div
-                    key={friend.id}
-                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      isSelected
-                        ? "border-primary-300 bg-primary-50"
-                        : "border-gray-200"
-                    }`}
-                    onClick={() => toggleFriend(friend)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleFriend(friend)}
-                      className="rounded text-primary-600"
-                    />
-                    <span className="text-sm flex-1">{friend.name}</span>
-                    {isSelected && (
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        className="input w-24 text-xs"
-                        value={split.amountOwed}
-                        onChange={(e) =>
-                          updateSplitAmount(friend.id, e.target.value)
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        placeholder="0.00"
-                        required
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
-            {error}
-          </div>
-        )}
-
-        <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? "Creating..." : "Create Expense"}
-        </button>
+        <SplitsEditor
+          currentUserId={currentUser.id}
+          currentUserName={currentUser.name}
+          currentUserEmail={currentUser.email}
+          friends={friends}
+          splits={splits}
+          splitMode={splitMode}
+          onToggleFriend={toggleFriend}
+          onAmountChange={updateSplitAmount}
+          onModeToggle={handleModeToggle}
+        />
       </form>
-    </div>
+    </Modal>
   );
 }

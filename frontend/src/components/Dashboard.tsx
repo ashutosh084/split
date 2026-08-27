@@ -6,83 +6,88 @@ interface Props {
   data: DashboardData;
 }
 
+/** Safely format a number to 2 decimal places, even for absurdly large values */
+function fmt(n: number): string {
+  if (!isFinite(n)) return "₹0.00";
+  if (n > 1e15 || n < -1e15) return "₹0.00";
+  return `₹${n.toFixed(2)}`;
+}
+
 export function Dashboard({ data }: Props) {
   const stats = [
     {
       label: "Total Spent",
-      value: `$${data.totalSpent.toFixed(2)}`,
-      color: "text-gray-900",
-      bg: "bg-gray-50",
+      value: fmt(data.totalSpent),
+      color: "text-tac-primary",
     },
     {
       label: "You Owe",
-      value: `$${data.iOwe.toFixed(2)}`,
-      color: "text-red-600",
-      bg: "bg-red-50",
+      value: fmt(data.iOwe),
+      color: "text-red-400",
     },
     {
       label: "You Are Owed",
-      value: `$${data.othersOweMe.toFixed(2)}`,
-      color: "text-green-600",
-      bg: "bg-green-50",
+      value: fmt(data.othersOweMe),
+      color: "text-tac-accent",
     },
     {
       label: "Net Balance",
-      value: `${data.netBalance >= 0 ? "+" : ""}$${data.netBalance.toFixed(2)}`,
-      color: data.netBalance >= 0 ? "text-green-600" : "text-red-600",
-      bg: data.netBalance >= 0 ? "bg-green-50" : "bg-red-50",
+      value: `${data.netBalance >= 0 ? "+" : ""}${fmt(data.netBalance).replace("₹", "")}`,
+      color: data.netBalance >= 0 ? "text-tac-accent" : "text-red-400",
     },
   ];
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-4">Dashboard</h2>
+      <h2 className="text-sm uppercase tracking-[0.3em] text-tac-muted font-mono mb-4 border-b border-tac-border pb-3">
+        [ Dashboard ]
+      </h2>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <div key={stat.label} className={`card ${stat.bg}`}>
-            <p className="text-sm text-gray-500">{stat.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${stat.color}`}>
-              {stat.value}
-            </p>
+          <div key={stat.label} className="stat-card">
+            <p className="stat-label">{stat.label}</p>
+            <p className={`stat-value ${stat.color}`}>{stat.value}</p>
           </div>
         ))}
       </div>
 
       {/* Quick summary */}
-      <div className="mt-6 card">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Summary</h3>
+      <div className="card-tactical">
+        <h3 className="text-[11px] uppercase tracking-[0.25em] text-tac-muted font-mono mb-3 border-b border-tac-border pb-2">
+          [ Summary ]
+        </h3>
         {data.iOwe === 0 && data.othersOweMe === 0 ? (
-          <p className="text-gray-500 text-sm">
+          <p className="text-xs text-tac-dim font-mono">
             You&apos;re all settled up! 🎉
           </p>
         ) : data.iOwe > 0 && data.othersOweMe > 0 ? (
-          <p className="text-gray-600 text-sm">
+          <p className="text-xs text-tac-muted font-mono">
             You owe{" "}
-            <span className="font-semibold text-red-600">
-              ${data.iOwe.toFixed(2)}
+            <span className="font-bold text-red-400">
+              ₹{data.iOwe.toFixed(2)}
             </span>{" "}
             and are owed{" "}
-            <span className="font-semibold text-green-600">
-              ${data.othersOweMe.toFixed(2)}
+            <span className="font-bold text-tac-accent">
+              ₹{data.othersOweMe.toFixed(2)}
             </span>
             .
             {data.netBalance > 0
-              ? ` Overall, you're in the green by $${data.netBalance.toFixed(2)}.`
-              : ` Overall, you're in the red by $${Math.abs(data.netBalance).toFixed(2)}.`}
+              ? ` Overall, you're in the green by ${fmt(data.netBalance)}.`
+              : ` Overall, you're in the red by ${fmt(Math.abs(data.netBalance))}.`}
           </p>
         ) : data.iOwe > 0 ? (
-          <p className="text-gray-600 text-sm">
+          <p className="text-xs text-tac-muted font-mono">
             You owe{" "}
-            <span className="font-semibold text-red-600">
-              ${data.iOwe.toFixed(2)}
+            <span className="font-bold text-red-400">
+              ₹{data.iOwe.toFixed(2)}
             </span>
             . Time to settle up!
           </p>
         ) : (
-          <p className="text-gray-600 text-sm">
+          <p className="text-xs text-tac-muted font-mono">
             You&apos;re owed{" "}
-            <span className="font-semibold text-green-600">
-              ${data.othersOweMe.toFixed(2)}
+            <span className="font-bold text-tac-accent">
+              ₹{data.othersOweMe.toFixed(2)}
             </span>
             .
           </p>

@@ -48,7 +48,7 @@ export class ApiError extends Error {
 // --- Auth ---
 
 export interface LoginPayload {
-  email: string;
+  identifier: string;
   password: string;
 }
 
@@ -56,12 +56,14 @@ export interface RegisterPayload {
   email: string;
   password: string;
   name: string;
+  username: string;
 }
 
 export interface User {
   id: string;
   email: string;
   name: string;
+  username: string;
   isAdmin: boolean;
 }
 
@@ -108,6 +110,7 @@ export interface CreateExpensePayload {
   description?: string;
   tags?: string[];
   splits: Split[];
+  groupId?: string;
 }
 
 export interface Expense {
@@ -128,6 +131,7 @@ export interface ExpenseSplit {
   user_name: string;
   amount_owed: number;
   is_paid: number;
+  settlement_requested: number;
 }
 
 export interface Tag {
@@ -150,9 +154,76 @@ export async function getExpense(id: string) {
   return apiFetch<Expense>(`/api/expenses/${id}`);
 }
 
-export async function settleExpense(expenseId: string) {
+export async function requestSettleExpense(expenseId: string) {
   return apiFetch<{ message: string }>(`/api/expenses/${expenseId}/settle`, {
     method: "PATCH",
+  });
+}
+
+export async function approveSettlement(expenseId: string, splitId: string) {
+  return apiFetch<{ message: string }>(
+    `/api/expenses/${expenseId}/settle/${splitId}/approve`,
+    { method: "PATCH" },
+  );
+}
+
+// --- Groups ---
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string;
+  created_at: number;
+  memberCount: number;
+  /** Net balance for the current user within this group (lent - borrowed). */
+  netBalance?: number;
+}
+
+export interface GroupMember {
+  id: string;
+  email: string;
+  name: string;
+}
+
+export interface GroupInsights {
+  totalGroupExpenditure: number;
+  individualExpenditure: number;
+  lent: number;
+  borrowed: number;
+  netBalance: number;
+}
+
+export interface GroupDetail extends Group {
+  members: GroupMember[];
+  insights: GroupInsights;
+  expenses: Expense[];
+}
+
+export interface CreateGroupPayload {
+  name: string;
+  description?: string;
+}
+
+export async function getGroups() {
+  return apiFetch<{ groups: Group[] }>("/api/groups");
+}
+
+export async function getGroup(id: string) {
+  return apiFetch<GroupDetail>(`/api/groups/${id}`);
+}
+
+export async function createGroup(payload: CreateGroupPayload) {
+  return apiFetch<{ message: string; group: Group }>("/api/groups", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function addGroupMembers(groupId: string, userIds: string[]) {
+  return apiFetch<{ message: string }>(`/api/groups/${groupId}/members`, {
+    method: "POST",
+    body: { userIds },
   });
 }
 
@@ -164,8 +235,25 @@ export interface Friend {
   name: string;
 }
 
+export interface FriendRequest {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: string;
+  created_at: number;
+  from_name?: string;
+  from_email?: string;
+  to_name?: string;
+  to_email?: string;
+}
+
 export async function addFriend(friendEmail: string) {
-  return apiFetch<{ message: string; friend: Friend }>("/api/friends", {
+  return apiFetch<{
+    message: string;
+    requestId?: string;
+    friend?: Friend;
+    recipient?: { id: string; email: string; name: string };
+  }>("/api/friends", {
     method: "POST",
     body: { friendEmail },
   });
@@ -173,6 +261,32 @@ export async function addFriend(friendEmail: string) {
 
 export async function getFriends() {
   return apiFetch<{ friends: Friend[] }>("/api/friends");
+}
+
+export async function getIncomingFriendRequests() {
+  return apiFetch<{ requests: FriendRequest[] }>(
+    "/api/friends/requests/incoming",
+  );
+}
+
+export async function getOutgoingFriendRequests() {
+  return apiFetch<{ requests: FriendRequest[] }>(
+    "/api/friends/requests/outgoing",
+  );
+}
+
+export async function acceptFriendRequest(requestId: string) {
+  return apiFetch<{ message: string }>(
+    `/api/friends/requests/${requestId}/accept`,
+    { method: "POST" },
+  );
+}
+
+export async function rejectFriendRequest(requestId: string) {
+  return apiFetch<{ message: string }>(
+    `/api/friends/requests/${requestId}/reject`,
+    { method: "POST" },
+  );
 }
 
 // --- Users ---
@@ -187,6 +301,15 @@ export interface DashboardData {
 export interface TagBreakdown {
   name: string;
   total: number;
+}
+
+export interface TagSuggestion {
+  id: string;
+  name: string;
+}
+
+export async function getTagSuggestions() {
+  return apiFetch<{ tags: TagSuggestion[] }>("/api/users/me/tag-suggestions");
 }
 
 export async function getDashboard() {
@@ -225,4 +348,10 @@ export async function approveUser(userId: string) {
 
 export async function getAllUsers() {
   return apiFetch<{ users: AdminUser[] }>("/api/admin/users");
+}
+
+export async function deleteUser(userId: string) {
+  return apiFetch<{ message: string }>(`/api/admin/users/${userId}`, {
+    method: "DELETE",
+  });
 }

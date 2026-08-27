@@ -4,12 +4,12 @@ import { useState } from "react";
 import { ApiError } from "@/lib/api";
 
 interface Props {
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (identifier: string, password: string) => Promise<void>;
   onSwitchToRegister: () => void;
 }
 
 export function LoginForm({ onLogin, onSwitchToRegister }: Props) {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,7 +19,7 @@ export function LoginForm({ onLogin, onSwitchToRegister }: Props) {
     setError("");
     setLoading(true);
     try {
-      await onLogin(email, password);
+      await onLogin(identifier, password);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -32,29 +32,32 @@ export function LoginForm({ onLogin, onSwitchToRegister }: Props) {
   };
 
   return (
-    <div className="card">
-      <h2 className="text-xl font-semibold mb-6">Sign In</h2>
+    <div className="card-tactical">
+      <h2 className="text-sm uppercase tracking-[0.3em] text-tac-muted font-mono mb-6 border-b border-tac-border pb-4">
+        [ Sign In ]
+      </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email
+          <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
+            Email or Username
           </label>
           <input
-            type="email"
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            type="text"
+            className="input-tactical"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="you@example.com or username"
+            autoComplete="username"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-[11px] uppercase tracking-[0.2em] text-tac-muted font-mono mb-1.5">
             Password
           </label>
           <input
             type="password"
-            className="input"
+            className="input-tactical"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
@@ -62,23 +65,23 @@ export function LoginForm({ onLogin, onSwitchToRegister }: Props) {
             minLength={8}
           />
         </div>
-        {error && (
-          <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
-            {error}
-          </div>
-        )}
-        <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? "Signing in..." : "Sign In"}
+        {error && <div className="alert-tactical-error">{error}</div>}
+        <button
+          type="submit"
+          className="btn-tactical-primary w-full"
+          disabled={loading}
+        >
+          {loading ? "[ AUTHENTICATING... ]" : "[ SIGN IN ]"}
         </button>
       </form>
-      <p className="text-sm text-gray-500 text-center mt-4">
-        Don&apos;t have an account?{" "}
+      <p className="text-[11px] text-tac-dim text-center mt-5 font-mono uppercase tracking-wider">
+        No account?{" "}
         <button
           type="button"
           onClick={onSwitchToRegister}
-          className="text-primary-600 hover:underline font-medium"
+          className="text-tac-accent hover:text-tac-bright transition-colors font-mono"
         >
-          Register
+          [ Register ]
         </button>
       </p>
     </div>

@@ -20,7 +20,12 @@ export function AddFriendForm({ onAdded }: Props) {
     setLoading(true);
     try {
       const data = await addFriend(email);
-      setSuccess(`Added ${data.friend.name} as a friend!`);
+      const targetName = data.friend?.name ?? data.recipient?.name ?? email;
+      setSuccess(
+        data.friend
+          ? `You and ${targetName} are now friends!`
+          : `Friend request sent to ${targetName}!`,
+      );
       setEmail("");
       onAdded();
     } catch (err) {
@@ -35,23 +40,33 @@ export function AddFriendForm({ onAdded }: Props) {
   };
 
   return (
-    <div className="card">
-      <h3 className="text-sm font-medium text-gray-700 mb-3">Add a Friend</h3>
+    <div className="card-tactical">
+      <h3 className="text-[11px] uppercase tracking-[0.25em] text-tac-muted font-mono mb-3 border-b border-tac-border pb-2">
+        [ Add Friend ]
+      </h3>
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="email"
-          className="input flex-1"
+          className="input-tactical flex-1"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="friend@example.com"
           required
         />
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? "..." : "Add"}
+        <button
+          type="submit"
+          className="btn-tactical-primary"
+          disabled={loading}
+        >
+          {loading ? "[ ... ]" : "[ ADD ]"}
         </button>
       </form>
-      {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-      {success && <p className="text-sm text-green-600 mt-2">{success}</p>}
+      {error && (
+        <div className="alert-tactical-error mt-2 text-[10px]">{error}</div>
+      )}
+      {success && (
+        <div className="alert-tactical-success mt-2 text-[10px]">{success}</div>
+      )}
     </div>
   );
 }

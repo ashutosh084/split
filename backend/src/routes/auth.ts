@@ -11,10 +11,18 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1).max(100),
+  username: z
+    .string()
+    .min(1)
+    .max(50)
+    .regex(
+      /^[a-zA-Z0-9_.-]+$/,
+      "Username may only contain letters, numbers, dots, underscores, and hyphens",
+    ),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1),
   password: z.string(),
 });
 
@@ -42,17 +50,27 @@ export const authRoutes = new Hono<{
  * The first registered user automatically becomes admin (is_admin = 1, is_approved = 1).
  */
 authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
-  const { email, password, name } = c.req.valid("json");
+  const { email, password, name, username } = c.req.valid("json");
   const db = c.env.DB;
 
   // Check if email already exists
-  const existing = await db
+  const existingEmail = await db
     .prepare("SELECT id FROM Users WHERE email = ?")
     .bind(email)
     .first();
 
-  if (existing) {
+  if (existingEmail) {
     return c.json({ error: "Email already registered" }, 409);
+  }
+
+  // Check if username is already taken
+  const existingUsername = await db
+    .prepare("SELECT id FROM Users WHERE username = ?")
+    .bind(username)
+    .first();
+
+  if (existingUsername) {
+    return c.json({ error: "Username already taken" }, 409);
   }
 
   const id = uuid();
@@ -67,13 +85,14 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
 
   await db
     .prepare(
-      "INSERT INTO Users (id, email, password_hash, name, is_approved, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO Users (id, email, password_hash, name, username, is_approved, is_admin) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
       email,
       passwordHash,
       name,
+      username,
       isFirstUser ? 1 : 0,
       isFirstUser ? 1 : 0,
     )
@@ -94,19 +113,20 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
  * Rejects if is_approved == 0. Returns a Set-Cookie with JWT if approved.
  */
 authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
+  const { identifier, password } = c.req.valid("json");
   const db = c.env.DB;
 
   const user = await db
     .prepare(
-      "SELECT id, email, password_hash, name, is_approved, is_admin FROM Users WHERE email = ?",
+      "SELECT id, email, password_hash, name, username, is_approved, is_admin FROM Users WHERE email = ? OR username = ?",
     )
-    .bind(email)
+    .bind(identifier, identifier)
     .first<{
       id: string;
       email: string;
       password_hash: string;
       name: string;
+      username: string;
       is_approved: number;
       is_admin: number;
     }>();
@@ -141,6 +161,7 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
       id: user.id,
       email: user.email,
       name: user.name,
+      username: user.username,
       isAdmin: !!user.is_admin,
     },
     token, // also return token for Authorization header usage
@@ -172,7 +193,9 @@ authRoutes.get("/me", async (c) => {
 
   const db = c.env.DB;
   const user = await db
-    .prepare("SELECT id, email, name, is_admin FROM Users WHERE id = ?")
+    .prepare(
+      "SELECT id, email, name, username, is_admin FROM Users WHERE id = ?",
+    )
     .bind(payload.userId)
     .first();
 

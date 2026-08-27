@@ -87,6 +87,35 @@ userRoutes.get("/me/tags", async (c) => {
 });
 
 /**
+ * GET /api/users/me/tag-suggestions
+ * Returns unique tag names that the current user (or their friends) have used,
+ * for autocomplete suggestions in the expense form.
+ */
+userRoutes.get("/me/tag-suggestions", async (c) => {
+  const currentUser = c.get("user");
+  const db = c.env.DB;
+  const userId = currentUser.userId;
+
+  const tags = await db
+    .prepare(
+      `SELECT DISTINCT t.id, t.name
+       FROM Tags t
+       INNER JOIN UserTags ut ON ut.tag_id = t.id
+       WHERE ut.user_id = ?
+          OR ut.user_id IN (
+            SELECT u2.id FROM Users u2
+            INNER JOIN Friends f ON (f.user_id_1 = u2.id OR f.user_id_2 = u2.id)
+            WHERE (f.user_id_1 = ? OR f.user_id_2 = ?) AND u2.id != ?
+          )
+       ORDER BY t.name`,
+    )
+    .bind(userId, userId, userId, userId)
+    .all();
+
+  return c.json({ tags: tags.results });
+});
+
+/**
  * GET /api/users/search?q=<query>
  * Search for users by name or email (for adding friends or splitting).
  */

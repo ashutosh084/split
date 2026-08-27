@@ -5,6 +5,7 @@ import { authRoutes } from "./routes/auth";
 import { adminRoutes } from "./routes/admin";
 import { friendRoutes } from "./routes/friends";
 import { expenseRoutes } from "./routes/expenses";
+import { groupRoutes } from "./routes/groups";
 import { userRoutes } from "./routes/users";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -29,6 +30,7 @@ app.route("/api/auth", authRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/friends", friendRoutes);
 app.route("/api/expenses", expenseRoutes);
+app.route("/api/groups", groupRoutes);
 app.route("/api/users", userRoutes);
 
 export default app;

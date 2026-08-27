@@ -302,7 +302,75 @@ If your Pages custom domain differs from the default, redeploy the backend with 
 
 ---
 
-## 7. Custom Domain (Optional)
+## 7. Database Migrations (Safe, No Data Loss)
+
+All SQL migrations live in `backend/migrations/` and are numbered sequentially (`001_initial.sql`, `002_friend_requests.sql`, etc.). Each migration uses `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN` (where supported), or other non-destructive DDL — so running them is **idempotent and safe** against existing data.
+
+### Local Development
+
+Apply a specific migration to your **local** D1:
+
+```bash
+cd backend
+npx wrangler d1 execute split-db --local --file=./migrations/002_friend_requests.sql
+```
+
+Or use the npm script:
+
+```bash
+npm run db:migrate:local -- ./migrations/002_friend_requests.sql
+```
+
+> **Tip:** Run each migration in numeric order. Skipping one is safe as long as later migrations don't depend on its schema changes.
+
+### Production (Remote D1)
+
+**Step 1 — Back up the remote database** (optional but recommended):
+
+```bash
+npx wrangler d1 export split-db --remote --output=./backups/$(date +%Y%m%d_%H%M%S).sql
+```
+
+**Step 2 — Apply the migration:**
+
+```bash
+npx wrangler d1 execute split-db --remote --file=./migrations/002_friend_requests.sql
+```
+
+Or with npm:
+
+```bash
+npm run db:migrate:remote -- ./migrations/002_friend_requests.sql
+```
+
+**Step 3 — Verify:**
+
+```bash
+npx wrangler d1 execute split-db --remote --command="SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+```
+
+This lists all tables — confirm your new table/column appears.
+
+### What Happens on Re-run
+
+Because all statements use `IF NOT EXISTS` or similar guards, re-running a migration is safe:
+
+- `CREATE TABLE IF NOT EXISTS …` → skipped if the table already exists
+- `ALTER TABLE … ADD COLUMN …` → D1 will error if the column exists; wrap these in a manual check or run them one-time
+- `INSERT …` / `UPDATE …` → set these behind `WHERE` guards so they don't duplicate data (e.g. `INSERT INTO … SELECT … WHERE NOT EXISTS (SELECT 1 FROM …)` )
+
+### Migration Checklist
+
+| #   | Step                     | Command                                                                   |
+| --- | ------------------------ | ------------------------------------------------------------------------- |
+| 1   | **Read the `.sql` file** | Confirm it only adds — no `DROP`, no destructive changes                  |
+| 2   | **Run locally first**    | `npm run db:migrate:local -- ./migrations/NNN_name.sql`                   |
+| 3   | **Test the app locally** | Verify the new feature works against the local D1                         |
+| 4   | **Export remote backup** | `npx wrangler d1 export split-db --remote --output=./backups/pre_NNN.sql` |
+| 5   | **Apply to remote**      | `npm run db:migrate:remote -- ./migrations/NNN_name.sql`                  |
+| 6   | **Verify**               | Smoke-test the feature on production                                      |
+
+---
 
 **For the Worker:**
 
@@ -318,7 +386,7 @@ After binding custom domains, update `CORS_ORIGIN` and `NEXT_PUBLIC_API_URL` acc
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Problem                      | Likely Fix                                                                            |
 | ---------------------------- | ------------------------------------------------------------------------------------- |

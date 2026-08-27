@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import type { AdminUser } from "@/lib/api";
-import { getPendingUsers, approveUser, getAllUsers } from "@/lib/api";
+import { approveUser, getAllUsers, deleteUser } from "@/lib/api";
 
 export function AdminPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -34,78 +35,122 @@ export function AdminPanel() {
     }
   };
 
+  const handleRemove = async (userId: string) => {
+    setError("");
+    try {
+      await deleteUser(userId);
+      setConfirmRemoveId(null);
+      loadUsers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to remove user.";
+      setError(msg);
+      setConfirmRemoveId(null);
+    }
+  };
+
   const pendingCount = users.filter((u) => !u.is_approved).length;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <div className="animate-spin h-6 w-6 border-4 border-primary-200 border-t-primary-600 rounded-full" />
+        <div className="spinner-tactical-sm" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="card">
-        <h2 className="text-lg font-semibold mb-1">Admin Panel</h2>
-        <p className="text-sm text-gray-500">
-          {pendingCount} user{pendingCount !== 1 ? "s" : ""} pending approval
-        </p>
+      <div className="card-tactical flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm uppercase tracking-[0.3em] text-tac-muted font-mono mb-1">
+            [ Admin Panel ]
+          </h2>
+          <p className="text-[10px] text-tac-dim font-mono uppercase tracking-wider">
+            {pendingCount} user{pendingCount !== 1 ? "s" : ""} pending approval
+          </p>
+        </div>
+        {pendingCount > 0 && (
+          <span className="badge-tactical-amber">{pendingCount}</span>
+        )}
       </div>
 
-      {error && (
-        <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
-          {error}
-        </div>
-      )}
+      {error && <div className="alert-tactical-error">{error}</div>}
 
-      <div className="card">
-        <h3 className="text-sm font-medium text-gray-700 mb-4">All Users</h3>
+      <div className="card-tactical">
+        <h3 className="text-[11px] uppercase tracking-[0.25em] text-tac-muted font-mono mb-4 border-b border-tac-border pb-2">
+          [ All Users ]
+        </h3>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="table-tactical">
             <thead>
-              <tr className="text-left text-gray-500 border-b">
-                <th className="pb-2 font-medium">Name</th>
-                <th className="pb-2 font-medium">Email</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 font-medium">Role</th>
-                <th className="pb-2 font-medium text-right">Action</th>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Role</th>
+                <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
-                <tr key={user.id} className="border-b border-gray-50">
-                  <td className="py-2">{user.name}</td>
-                  <td className="py-2 text-gray-500">{user.email}</td>
-                  <td className="py-2">
+                <tr key={user.id}>
+                  <td className="font-mono text-tac-primary">{user.name}</td>
+                  <td className="text-tac-dim">{user.email}</td>
+                  <td>
                     {user.is_approved ? (
-                      <span className="text-green-600 text-xs font-medium">
-                        ✓ Approved
-                      </span>
+                      <span className="badge-tactical-green">✓ APPROVED</span>
                     ) : (
-                      <span className="text-amber-600 text-xs font-medium">
-                        Pending
-                      </span>
+                      <span className="badge-tactical-amber">PENDING</span>
                     )}
                   </td>
-                  <td className="py-2">
+                  <td>
                     {user.is_admin ? (
-                      <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
-                        Admin
-                      </span>
+                      <span className="badge-tactical-amber">ADMIN</span>
                     ) : (
-                      <span className="text-xs text-gray-400">User</span>
+                      <span className="text-[10px] text-tac-dim uppercase tracking-wider font-mono">
+                        USER
+                      </span>
                     )}
                   </td>
-                  <td className="py-2 text-right">
-                    {!user.is_approved && (
-                      <button
-                        onClick={() => handleApprove(user.id)}
-                        className="text-xs btn-primary py-1 px-2"
-                      >
-                        Approve
-                      </button>
-                    )}
+                  <td className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {!user.is_approved && (
+                        <button
+                          onClick={() => handleApprove(user.id)}
+                          className="btn-tactical-primary text-[10px] py-1 px-3"
+                        >
+                          [ APPROVE ]
+                        </button>
+                      )}
+                      {user.is_approved &&
+                        !user.is_admin &&
+                        (confirmRemoveId === user.id ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-tac-warning font-mono uppercase tracking-wider mr-1">
+                              CONFIRM?
+                            </span>
+                            <button
+                              onClick={() => handleRemove(user.id)}
+                              className="btn-tactical-danger text-[10px] py-1 px-2"
+                            >
+                              YES
+                            </button>
+                            <button
+                              onClick={() => setConfirmRemoveId(null)}
+                              className="text-[10px] text-tac-dim hover:text-tac-primary font-mono py-1 px-2"
+                            >
+                              NO
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmRemoveId(user.id)}
+                            className="btn-tactical-danger text-[10px] py-1 px-3"
+                          >
+                            [ REMOVE ]
+                          </button>
+                        ))}
+                    </div>
                   </td>
                 </tr>
               ))}

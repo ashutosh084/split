@@ -1,32 +1,173 @@
+@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-tac-bg text-tac-primary antialiased font-mono;
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(132, 204, 116, 0.012) 2px,
+      rgba(132, 204, 116, 0.012) 4px
+    );
+  }
+
+  ::selection {
+    background: rgba(74, 222, 128, 0.25);
+    color: #a3e635;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #091208;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1a3a1a;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2d5a2d;
+  }
+
+  input[type="checkbox"] {
+    accent-color: #4ade80;
   }
 }
 
 @layer components {
-  .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium
-           transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50;
+  /* ── Buttons ── */
+  .btn-tactical {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm uppercase tracking-[0.15em]
+           border font-mono select-none whitespace-nowrap
+           transition-all duration-150
+           focus:outline-none focus:ring-1 focus:ring-tac-accent/30
+           disabled:opacity-30 disabled:cursor-not-allowed;
   }
-  .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  .btn-tactical-primary {
+    @apply btn-tactical
+           border-tac-border-active bg-tac-surface text-tac-primary
+           hover:bg-tac-border hover:border-tac-accent hover:text-tac-accent
+           active:bg-tac-border-active;
   }
-  .btn-secondary {
-    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500;
+  .btn-tactical-danger {
+    @apply btn-tactical
+           border-red-900/60 bg-red-950/40 text-red-400
+           hover:bg-red-900/40 hover:border-red-500 hover:text-red-300
+           active:bg-red-900/60;
   }
-  .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  .btn-tactical-ghost {
+    @apply btn-tactical
+           border-transparent bg-transparent text-tac-muted
+           hover:text-tac-primary hover:border-tac-border;
   }
-  .input {
-    @apply block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
-           placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+
+  /* ── Cards ── */
+  .card-tactical {
+    @apply bg-tac-surface border border-tac-border p-5
+           shadow-[inset_0_0_20px_rgba(74,222,128,0.02)];
   }
-  .card {
-    @apply bg-white rounded-xl border border-gray-200 shadow-sm p-6;
+
+  /* ── Inputs ── */
+  .input-tactical {
+    @apply block w-full px-3 py-2 text-sm font-mono
+           bg-tac-bg border border-tac-border text-tac-primary
+           placeholder:text-tac-dim
+           focus:border-tac-accent focus:outline-none focus:ring-1 focus:ring-tac-accent/25
+           transition-colors duration-150;
+  }
+
+  /* ── Tabs ── */
+  .tab-tactical {
+    @apply inline-flex items-center justify-center min-w-max px-2 py-1.5 text-xs uppercase tracking-[0.2em] font-mono
+           border-b-2 transition-colors duration-150
+           focus:outline-none whitespace-nowrap
+           sm:px-4 sm:py-2.5;
+  }
+  .tab-tactical-active {
+    @apply border-tac-accent text-tac-accent;
+  }
+  .tab-tactical-inactive {
+    @apply border-transparent text-tac-muted hover:text-tac-primary hover:border-tac-dim;
+  }
+
+  /* ── Badges / Chips ── */
+  .badge-tactical {
+    @apply inline-block px-2 py-0.5 text-[10px] uppercase tracking-wider font-mono
+           border;
+  }
+  .badge-tactical-green {
+    @apply badge-tactical bg-tac-surface border-tac-border text-tac-primary;
+  }
+  .badge-tactical-amber {
+    @apply badge-tactical bg-amber-950/30 border-amber-800/40 text-amber-400;
+  }
+  .badge-tactical-red {
+    @apply badge-tactical bg-red-950/30 border-red-800/40 text-red-400;
+  }
+
+  /* ── Separator ── */
+  .sep-tactical {
+    @apply border-tac-border;
+  }
+
+  /* ── Stat Cards ── */
+  .stat-card {
+    @apply card-tactical flex flex-col gap-1;
+  }
+  .stat-label {
+    @apply text-[10px] uppercase tracking-[0.2em] text-tac-muted font-mono;
+  }
+  .stat-value {
+    @apply text-2xl font-mono font-bold;
+  }
+
+  /* ── Spinner ── */
+  .spinner-tactical {
+    @apply animate-spin h-8 w-8 border-2 border-tac-dim border-tac-accent rounded-full;
+  }
+  .spinner-tactical-sm {
+    @apply animate-spin h-5 w-5 border-2 border-tac-dim border-tac-accent rounded-full;
+  }
+
+  /* ── Alerts / Messages ── */
+  .alert-tactical-error {
+    @apply text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 font-mono;
+  }
+  .alert-tactical-success {
+    @apply text-xs text-tac-accent bg-tac-surface border border-tac-border p-3 font-mono;
+  }
+
+  /* ── Table ── */
+  .table-tactical {
+    @apply w-full text-sm font-mono;
+  }
+  .table-tactical thead tr {
+    @apply border-b border-tac-border text-tac-muted text-left;
+  }
+  .table-tactical th {
+    @apply pb-2 font-normal uppercase tracking-wider text-[10px];
+  }
+  .table-tactical tbody tr {
+    @apply border-b border-tac-border/50;
+  }
+  .table-tactical td {
+    @apply py-2;
+  }
+
+  /* ── Split row selection ── */
+  .split-row {
+    @apply flex items-center gap-2 p-2 border cursor-pointer transition-all duration-150 font-mono text-sm;
+  }
+  .split-row-selected {
+    @apply border-tac-accent/50 bg-tac-accent/5;
+  }
+  .split-row-unselected {
+    @apply border-tac-border;
   }
 }

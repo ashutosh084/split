@@ -8,9 +8,9 @@
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 execute split-db --local --file=./migrations/001_initial.sql",
     "db:remote": "wrangler d1 execute split-db --remote --file=./migrations/001_initial.sql",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 execute split-db --local --file=./migrations/001_initial.sql",
-    "db:migrate:remote": "wrangler d1 execute split-db --remote --file=./migrations/001_initial.sql"
+    "db:migrate:local": "wrangler d1 execute split-db --local --file",
+    "db:migrate:remote": "wrangler d1 execute split-db --remote --file",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.1.11",

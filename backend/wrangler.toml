@@ -6,11 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "split-db"
-database_id = ""
-
-[[kv_namespaces]]
-binding = "KV"
+database_id = "e6192c2e-51a9-4e6f-8067-920e82f65341"
 
 [vars]
-JWT_SECRET = ""
-CORS_ORIGIN = "http://localhost:3000"
+JWT_SECRET = "ec84cea356361e82c91bdbdaf2d423803bb502cc1d6a673ec5d6abb14d1202e6"
+CORS_ORIGIN = "https://split.asphome.in"

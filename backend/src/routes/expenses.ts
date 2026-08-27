@@ -9,15 +9,16 @@ import { uuid } from "../utils/helpers";
 
 const splitSchema = z.object({
   userId: z.string().uuid(),
-  amountOwed: z.number().positive(),
+  amountOwed: z.number().positive().max(10_000_000, "Amount too large"),
 });
 
 const createExpenseSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().positive().max(10_000_000, "Amount too large"),
   name: z.string().min(1).max(200),
   description: z.string().max(500).optional(),
   tags: z.array(z.string().min(1).max(50)).optional(),
   splits: z.array(splitSchema).min(1),
+  groupId: z.string().uuid().optional(),
 });
 
 export const expenseRoutes = new Hono<{
@@ -35,7 +36,8 @@ expenseRoutes.use("*", authRequired);
  * Executed in a D1 batch for atomicity.
  */
 expenseRoutes.post("/", zValidator("json", createExpenseSchema), async (c) => {
-  const { amount, name, description, tags, splits } = c.req.valid("json");
+  const { amount, name, description, tags, splits, groupId } =
+    c.req.valid("json");
   const currentUser = c.get("user");
   const db = c.env.DB;
 
@@ -60,7 +62,7 @@ expenseRoutes.post("/", zValidator("json", createExpenseSchema), async (c) => {
   statements.push(
     db
       .prepare(
-        "INSERT INTO Expenses (id, payer_id, amount, name, description, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO Expenses (id, payer_id, amount, name, description, group_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         expenseId,
@@ -68,6 +70,7 @@ expenseRoutes.post("/", zValidator("json", createExpenseSchema), async (c) => {
         amount,
         name,
         description || null,
+        groupId || null,
         now,
       ),
   );
@@ -107,6 +110,14 @@ expenseRoutes.post("/", zValidator("json", createExpenseSchema), async (c) => {
           .prepare("INSERT INTO ExpenseTags (expense_id, tag_id) VALUES (?, ?)")
           .bind(expenseId, tag.id),
       );
+
+      // Track that this user has used this tag (for suggestions)
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO UserTags (user_id, tag_id) VALUES (?, ?)",
+        )
+        .bind(currentUser.userId, tag.id)
+        .run();
     }
   }
 
@@ -118,30 +129,25 @@ expenseRoutes.post("/", zValidator("json", createExpenseSchema), async (c) => {
 
 /**
  * PATCH /api/expenses/:id/settle
- * Marks a specific split as paid (is_paid = 1).
- * Only the user who owes the money or the payer can settle.
+ * Requests settlement for the current user's split.
+ * Sets settlement_requested = 1. The payer must approve to finalize.
  */
 expenseRoutes.patch("/:id/settle", async (c) => {
   const expenseId = c.req.param("id");
   const currentUser = c.get("user");
   const db = c.env.DB;
 
-  // Verify the expense exists and the user is either the payer or a participant
-  const expense = await db
-    .prepare("SELECT id, payer_id FROM Expenses WHERE id = ?")
-    .bind(expenseId)
-    .first<{ id: string; payer_id: string }>();
-
-  if (!expense) {
-    return c.json({ error: "Expense not found" }, 404);
-  }
-
   const split = await db
     .prepare(
-      "SELECT id, user_id, is_paid FROM ExpenseSplits WHERE expense_id = ? AND user_id = ?",
+      "SELECT id, user_id, is_paid, settlement_requested FROM ExpenseSplits WHERE expense_id = ? AND user_id = ?",
     )
     .bind(expenseId, currentUser.userId)
-    .first<{ id: string; user_id: string; is_paid: number }>();
+    .first<{
+      id: string;
+      user_id: string;
+      is_paid: number;
+      settlement_requested: number;
+    }>();
 
   if (!split) {
     return c.json({ error: "You are not part of this expense" }, 403);
@@ -151,19 +157,79 @@ expenseRoutes.patch("/:id/settle", async (c) => {
     return c.json({ error: "Already settled" }, 400);
   }
 
+  if (split.settlement_requested) {
+    return c.json(
+      { error: "Settlement already requested — awaiting payer approval" },
+      400,
+    );
+  }
+
   await db
     .prepare(
-      "UPDATE ExpenseSplits SET is_paid = 1 WHERE expense_id = ? AND user_id = ?",
+      "UPDATE ExpenseSplits SET settlement_requested = 1 WHERE expense_id = ? AND user_id = ?",
     )
     .bind(expenseId, currentUser.userId)
     .run();
 
-  return c.json({ message: "Settled successfully" });
+  return c.json({ message: "Settlement requested — awaiting payer approval" });
+});
+
+/**
+ * PATCH /api/expenses/:id/settle/:splitId/approve
+ * Approves a settlement request. Only the payer of the expense can approve.
+ */
+expenseRoutes.patch("/:id/settle/:splitId/approve", async (c) => {
+  const expenseId = c.req.param("id");
+  const splitId = c.req.param("splitId");
+  const currentUser = c.get("user");
+  const db = c.env.DB;
+
+  // Verify the current user is the payer
+  const expense = await db
+    .prepare("SELECT id, payer_id FROM Expenses WHERE id = ?")
+    .bind(expenseId)
+    .first<{ id: string; payer_id: string }>();
+
+  if (!expense) {
+    return c.json({ error: "Expense not found" }, 404);
+  }
+
+  if (expense.payer_id !== currentUser.userId) {
+    return c.json({ error: "Only the payer can approve settlements" }, 403);
+  }
+
+  const split = await db
+    .prepare(
+      "SELECT id, is_paid, settlement_requested FROM ExpenseSplits WHERE id = ? AND expense_id = ?",
+    )
+    .bind(splitId, expenseId)
+    .first<{ id: string; is_paid: number; settlement_requested: number }>();
+
+  if (!split) {
+    return c.json({ error: "Split not found" }, 404);
+  }
+
+  if (split.is_paid) {
+    return c.json({ error: "Already settled" }, 400);
+  }
+
+  if (!split.settlement_requested) {
+    return c.json({ error: "No settlement request to approve" }, 400);
+  }
+
+  await db
+    .prepare(
+      "UPDATE ExpenseSplits SET is_paid = 1, settlement_requested = 0 WHERE id = ?",
+    )
+    .bind(splitId)
+    .run();
+
+  return c.json({ message: "Settlement approved" });
 });
 
 /**
  * GET /api/expenses
- * Lists all expenses the current user is involved in.
+ * Lists all expenses the current user is involved in, with tags.
  */
 expenseRoutes.get("/", async (c) => {
   const currentUser = c.get("user");
@@ -182,7 +248,42 @@ expenseRoutes.get("/", async (c) => {
     .bind(currentUser.userId, currentUser.userId)
     .all();
 
-  return c.json({ expenses: expenses.results });
+  const rows = expenses.results as Array<Record<string, unknown>>;
+
+  // Fetch tags for all returned expenses in one query
+  if (rows.length > 0) {
+    const placeholders = rows.map(() => "?").join(",");
+    const ids = rows.map((r) => r.id as string);
+    const tagRows = await db
+      .prepare(
+        `SELECT et.expense_id, t.id, t.name
+         FROM ExpenseTags et
+         JOIN Tags t ON et.tag_id = t.id
+         WHERE et.expense_id IN (${placeholders})`,
+      )
+      .bind(...ids)
+      .all();
+
+    const tagsByExpense: Record<
+      string,
+      Array<{ id: string; name: string }>
+    > = {};
+    for (const tr of tagRows.results as Array<{
+      expense_id: string;
+      id: string;
+      name: string;
+    }>) {
+      if (!tagsByExpense[tr.expense_id]) tagsByExpense[tr.expense_id] = [];
+      tagsByExpense[tr.expense_id].push({ id: tr.id, name: tr.name });
+    }
+
+    for (const row of rows) {
+      (row as Record<string, unknown>).tags =
+        tagsByExpense[row.id as string] || [];
+    }
+  }
+
+  return c.json({ expenses: rows });
 });
 
 /**
@@ -210,7 +311,7 @@ expenseRoutes.get("/:id", async (c) => {
 
   const splits = await db
     .prepare(
-      `SELECT s.id, s.user_id, s.amount_owed, s.is_paid, u.name as user_name
+      `SELECT s.id, s.user_id, s.amount_owed, s.is_paid, s.settlement_requested, u.name as user_name
        FROM ExpenseSplits s
        JOIN Users u ON s.user_id = u.id
        WHERE s.expense_id = ?`,
